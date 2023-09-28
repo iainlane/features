@@ -22,6 +22,10 @@ DOCKER_LICENSED_ARCHIVE_VERSION_CODENAMES="bookworm buster bullseye bionic focal
 # Default: Exit on any failure.
 set -e
 
+set -x
+
+ls -laR /var/run/docker.pid || true
+
 # Clean up
 rm -rf /var/lib/apt/lists/*
 
@@ -354,6 +358,7 @@ tee /usr/local/share/docker-init.sh > /dev/null \
 #-------------------------------------------------------------------------------------------------------------
 
 set -e
+set -x
 
 AZURE_DNS_AUTO_DETECTION=${AZURE_DNS_AUTO_DETECTION}
 DOCKER_DEFAULT_ADDRESS_POOL=${DOCKER_DEFAULT_ADDRESS_POOL}
@@ -362,10 +367,16 @@ EOF
 tee -a /usr/local/share/docker-init.sh > /dev/null \
 << 'EOF'
 dockerd_start="AZURE_DNS_AUTO_DETECTION=${AZURE_DNS_AUTO_DETECTION} DOCKER_DEFAULT_ADDRESS_POOL=${DOCKER_DEFAULT_ADDRESS_POOL} $(cat << 'INNEREOF'
+
+    set -x
+
+    id
+    groups
+
     # explicitly remove dockerd and containerd PID file to ensure that it can start properly if it was stopped uncleanly
     # ie: docker kill <ID>
-    find /run /var/run -iname 'docker*.pid' -delete || :
-    find /run /var/run -iname 'container*.pid' -delete || :
+    find /run /var/run -iname 'docker*.pid' -print -delete || :
+    find /run /var/run -iname 'container*.pid' -print -delete || :
 
     # -- Start: dind wrapper script --
     # Maintained: https://github.com/moby/moby/blob/master/hack/dind
@@ -439,6 +450,12 @@ dockerd_start="AZURE_DNS_AUTO_DETECTION=${AZURE_DNS_AUTO_DETECTION} DOCKER_DEFAU
         DEFAULT_ADDRESS_POOL="--default-address-pool $DOCKER_DEFAULT_ADDRESS_POOL"
     fi
 
+    if [ -f /tmp/dockerd.log ]
+    then
+        cat /tmp/dockerd.log
+        rm /tmp/dockerd.log
+    fi
+
     # Start docker/moby engine
     ( dockerd $CUSTOMDNS $DEFAULT_ADDRESS_POOL > /tmp/dockerd.log 2>&1 ) &
 INNEREOF
@@ -449,6 +466,8 @@ docker_ok="false"
 
 until [ "${docker_ok}" = "true"  ] || [ "${retry_docker_start_count}" -eq "5" ];
 do 
+    ls -laR /var/run/docker.pid || true
+    ps faux
     # Start using sudo if not invoked as root
     if [ "$(id -u)" -ne 0 ]; then
         sudo /bin/sh -c "${dockerd_start}"
@@ -461,7 +480,9 @@ do
     do
         sleep 1s
         set +e
-            docker info > /dev/null 2>&1 && docker_ok="true"
+            id
+            groups
+            docker info && docker_ok="true"
         set -e
 
         retry_count=`expr $retry_count + 1`
@@ -469,6 +490,7 @@ do
     
     if [ "${docker_ok}" != "true" ]; then
         echo "(*) Failed to start docker, retrying..."
+        cat /tmp/dockerd.log
     fi
     
     retry_docker_start_count=`expr $retry_docker_start_count + 1`

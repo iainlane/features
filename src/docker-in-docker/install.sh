@@ -22,6 +22,10 @@ DOCKER_LICENSED_ARCHIVE_VERSION_CODENAMES="bookworm buster bullseye bionic focal
 # Default: Exit on any failure.
 set -e
 
+set -x
+
+ls -laR /var/run/docker.pid || true
+
 # Clean up
 rm -rf /var/lib/apt/lists/*
 
@@ -354,6 +358,7 @@ tee /usr/local/share/docker-init.sh > /dev/null \
 #-------------------------------------------------------------------------------------------------------------
 
 set -e
+set -x
 
 AZURE_DNS_AUTO_DETECTION=${AZURE_DNS_AUTO_DETECTION}
 DOCKER_DEFAULT_ADDRESS_POOL=${DOCKER_DEFAULT_ADDRESS_POOL}
@@ -449,6 +454,8 @@ docker_ok="false"
 
 until [ "${docker_ok}" = "true"  ] || [ "${retry_docker_start_count}" -eq "5" ];
 do 
+    ls -laR /var/run/docker.pid || true
+    ps faux
     # Start using sudo if not invoked as root
     if [ "$(id -u)" -ne 0 ]; then
         sudo /bin/sh -c "${dockerd_start}"
